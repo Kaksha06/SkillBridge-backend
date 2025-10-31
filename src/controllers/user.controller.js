@@ -2,6 +2,28 @@ import User from "../models/user.model.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
+// import { uploadOnCloudinary } from "../utils/cloudinary.js"
+// import { deleteOnCloudinary } from "../utils/cloudinary.js"
+import { response } from "express"
+import { log } from "console"
+import { verifyJWT } from "../middlewares/auth.middleware.js"
+import jwt from "jsonwebtoken"
+import mongoose from "mongoose"
+
+const generateAccessAndRefreshTokens = async(UserId)=>{
+     try {
+        const user = await User.findById(UserId)
+        const accessToken = user.generateAccessToken()
+        const refreshToken = user.generateRefreshToken()
+
+        user.refreshToken = refreshToken
+        await user.save({ validateBeforeSave: false })
+
+        return { accessToken, refreshToken }
+    } catch (error) {
+        throw new ApiError(500, "Something went wrong while generating access and referesh tokens")
+    }
+}
 
 const registerUser = asyncHandler(async (req, res) => {
     // Get user details from frontend
@@ -41,35 +63,38 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     // Generate JWT token
-    const token = user.generateAccessToken();
-    const refreshToken = user.generateRefreshToken();
+    // const token = user.generateAccessToken();
+    // const refreshToken = user.generateRefreshToken();
 
     // Save refresh token to user document
-    user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
+    // user.refreshToken = refreshToken;
+    // await user.save({ validateBeforeSave: false });
 
     // Set refresh token in HTTP-only cookie
-    const options = {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
-    };
+    // const options = {
+    //     httpOnly: true,
+    //     secure: process.env.NODE_ENV === 'production',
+    //     sameSite: 'strict',
+    //     maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+    // };
 
     // Return success response with user data and tokens
-    return res
-        .status(201)
-        .cookie('refreshToken', refreshToken, options)
-        .json(
-            new ApiResponse(
-                201,
-                {
-                    user: createdUser,
-                    accessToken: token
-                },
-                "User registered successfully"
-            )
-        );
+     return res.status(201).json(
+        new ApiResponse(200, createdUser, "User registered Successfully")
+    )
+    // return res
+    //     .status(201)
+    //     .cookie('refreshToken', refreshToken, options)
+    //     .json(
+    //         new ApiResponse(
+    //             201,
+    //             {
+    //                 user: createdUser,
+    //                 accessToken: token
+    //             },
+    //             "User registered successfully"
+    //         )
+    //     );
 })
 
 const loginUser = asyncHandler(async (req, res) => {
@@ -96,27 +121,27 @@ const loginUser = asyncHandler(async (req, res) => {
     }
 
     // Generate access and refresh tokens
-    const accessToken = user.generateAccessToken();
-    const refreshToken = user.generateRefreshToken();
+    // const accessToken = user.generateAccessToken();
+    // const refreshToken = user.generateRefreshToken();
 
     // Save refresh token to user document
-    user.refreshToken = refreshToken;
-    await user.save({ validateBeforeSave: false });
+    // user.refreshToken = refreshToken;
+    // await user.save({ validateBeforeSave: false });
 
     // Get user details without sensitive data
+    const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user._id)
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken");
 
     // Set refresh token in HTTP-only cookie
     const options = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        secure: true
     };
 
     // Return success response with user data and tokens
     return res
         .status(200)
+        .cookie("accessToken", accessToken, options)
         .cookie('refreshToken', refreshToken, options)
         .json(
             new ApiResponse(
@@ -130,7 +155,33 @@ const loginUser = asyncHandler(async (req, res) => {
         );
 });
 
+const logoutUser = asyncHandler(async(req,res) =>{
+    await User.findByIdAndUpdate(
+        req.user._id,
+        {
+            $set:{
+                refreshToken:undefined
+            }
+        },
+        {
+            new:true,
+        }
+    )
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+
+    return res
+        .status(200)
+        .clearCookie("accessToken", options)
+        .clearCookie("refreshToken", options)
+        .json(new ApiResponse(200, {}, "User logged out"))
+});
+
 export {
+    generateAccessAndRefreshTokens,
     registerUser,
-    loginUser
+    loginUser,
+    logoutUser
 }

@@ -105,7 +105,7 @@ userSchema.methods.generateRefreshToken = function() {
         },
         process.env.REFRESH_TOKEN_SECRET || 'your-refresh-token-secret',
         {
-            expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '7d'
+            expiresIn: process.env.REFRESH_TOKEN_EXPIRY || '30d'
         }
     );
 };
